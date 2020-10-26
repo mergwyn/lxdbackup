@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-
 # lxdbackup
 #
 # Backup up all remote lxd instances using lxc copy
-# First backup is using a snapshot then using --refresh
-#
-# Usage: lxdbackup
+# First backup is ia copy from a snapshot then full copy --refresh
 
 # shellcheck source=/dev/null
-for function in "$(dirname "$0")"/../functions/*.sh; do source "${function}"; done
+for function in "$(dirname "$0")"/functions/*.sh; do source "${function}"; done
 
 set -o nounset
 set -o errexit
@@ -17,9 +14,6 @@ set -o pipefail
 # global variables
 _snapshot=lxdbackup
 _lxc=$(command -v lxc)
-dryrun(){
-  _lxc="echo DRYRUN:${_lxc}"
-}
 
 # Cleanup when exiting unclean
 trap "cleanup; echo 'Unclean exit'" INT SIGHUP SIGINT SIGTERM
@@ -58,6 +52,11 @@ if [[ $# != 0 ]] ; then
   exit 1
 fi
 
+# using echo instead of real commands for dryrun
+dryrun(){
+  _lxc="echo DRYRUN:${_lxc}"
+}
+
 # delete snapshot if it exists
 delete_snapshot() {
   local container="$1"
@@ -78,6 +77,7 @@ delete_snapshot() {
   return 0
 }
 
+# Create snapshot making sure deleted first
 create_snapshot() {
   local container="$1"
   local snapname="$2"
@@ -97,6 +97,7 @@ create_snapshot() {
   return 0
 }
 
+# Copy container 
 copy_container() {
   local source="$1"
   local container="$2"
@@ -104,7 +105,7 @@ copy_container() {
   local refresh="$4"
   local copy_args="--stateless --config=boot.autostart=false --storage ${pool} ${refresh}"
 
-  log_notice "Attempting to copy '${source}'"
+  log_notice "Attempting to copy '${source}' ${refresh}"
   log_debug "${_lxc} copy ${source} ${container} ${copy_args}"
 
   # shellcheck disable=SC2086
@@ -116,11 +117,14 @@ copy_container() {
   return 0
 }
 
+# Get list of remotes excluding local
 remote_list() {
   lxc remote list | grep -v simplestreams | awk '/lxd/{print $2}' | grep -v local ;
 }
+
+# Get list of running containers
 container_list() {
-  lxc list -c ns "${remote}:" | awk '!/NAME/{ if ( $4 == "RUNNING" ) print $2}';
+  lxc list -c ns "${1}:" | awk '!/NAME/{ if ( $4 == "RUNNING" ) print $2}';
 }
 
 declare -i _remote_count
@@ -128,47 +132,52 @@ declare -i _backedup_count
 declare -i _container_count
 declare -a _remotes
 
+# Get the first pool on the local lxd.
+# This is explicitly set on the copy command
 _pool=$(lxc storage list --format=csv | cut -d ',' -f 1 | head -1)
 if [[ -z ${_pool} ]] ; then
-  log_critical "FAILED to get storage pool for ${remote}"
+  log_critical "FAILED to get local storage pool"
   exit 1
 fi
 
 mapfile -t _remotes < <(remote_list)
 log_debug "List of remotes to backup: ${_remotes[*]}"
 
-for remote in "${_remotes[@]}"; do
-  log_notice "Backing up remote ${remote}"
+# For each remote
+for _remote in "${_remotes[@]}"; do
+  log_notice "Backing up remote ${_remote}"
 
   declare -a _containers
   _remote_count=0
 
-  mapfile -t _containers < <(container_list)
+  mapfile -t _containers < <(container_list "${_remote}")
   log_debug "List of containers to backup: ${_containers[*]}"
   _container_count+=${#_containers[@]}
 
-  for container in "${_containers[@]}"; do
-    log_notice "Backing up container ${container}"
+  # For each container on this remote
+  for _container in "${_containers[@]}"; do
+    log_notice "Backing up container ${_container}"
 
-# Check if container exists on local.
-# If it does then make an initial copy of the container from a snapshot
-# This is because making a copy of a running container using criu doesn't work for some reason
-    if [[ -z $(lxc list "^${container}\$" -c n --format=csv) ]] ; then
-      log_debug "${container} doesn't exist on local:, create snapshot"
-      create_snapshot "${remote}:${container}" ${_snapshot} || continue
+    # Check if container exists on local.
+    # If it does then make an initial copy of the container from a snapshot
+    # This is because making a copy of a running container using criu doesn't work for some reason
+    if [[ -z $(lxc list "^${_container}\$" -c n --format=csv) ]] ; then
+      log_debug "${_container} doesn't exist on local:, create snapshot"
 
-      copy_container "${remote}:${container}/${_snapshot}" "${container}" "${_pool}" "" || continue
+      create_snapshot "${_remote}:${_container}" ${_snapshot} || continue
 
-      delete_snapshot "${remote}:${container}" "${_snapshot}" || continue
+      # Note empty 4th argument
+      copy_container "${_remote}:${_container}/${_snapshot}" "${_container}" "${_pool}" "" || continue
+
+      delete_snapshot "${_remote}:${_container}" "${_snapshot}" || continue
     fi
   
-    copy_container "${remote}:${container}" "${container}" "${_pool}" --refresh || continue
+    copy_container "${_remote}:${_container}" "${_container}" "${_pool}" --refresh || continue
 
     _remote_count+=1
-    log_debug "--------------------------------------------"
   done
 
-  log_notice "Backup of ${remote} complete, $_remote_count containers backed up"
+  log_notice "Backup of ${_remote} complete, $_remote_count containers backed up"
   _backedup_count+=${_remote_count}
 
 done
