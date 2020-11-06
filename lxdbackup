@@ -8,6 +8,8 @@ set -o nounset
 set -o errexit
 set -o pipefail
 
+LOGLEVEL=${LOGLEVEL:-INFO}
+
 # Logging functions
 # shellcheck source=/dev/null
 source "$(dirname "$0")"/functions/log.sh
@@ -64,7 +66,7 @@ copy_container() {
   local pool="$3"
   local copy_args="--stateless --instance-only --config=boot.autostart=false --storage ${pool}"
 
-  log_notice "Attempting to copy '${source}'"
+  log_info "Attempting to copy '${source}'"
 
   # Check if container exists on local.
   # If it does then make an initial copy of the container from a snapshot
@@ -119,7 +121,7 @@ log_debug "List of remotes to backup: ${_remotes[*]}"
 
 # For each remote
 for _remote in "${_remotes[@]}"; do
-  log_notice "Backing up remote ${_remote}"
+  log_info "Backing up remote ${_remote}"
 
   declare -a _containers
   _remote_count=0
@@ -130,14 +132,14 @@ for _remote in "${_remotes[@]}"; do
 
   # For each container on this remote
   for _container in "${_containers[@]}"; do
-    log_notice "Backing up container ${_container}"
+    log_info "Backing up container ${_container}"
 
     copy_container "${_remote}:${_container}" "${_container}" "${_pool}" || continue
 
     _remote_count+=1
   done
 
-  log_notice "Backup of ${_remote} complete, $_remote_count containers backed up"
+  log_info "Backup of ${_remote} complete, $_remote_count containers backed up"
   _backedup_count+=${_remote_count}
 
 done
