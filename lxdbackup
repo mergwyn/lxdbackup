@@ -143,6 +143,6 @@ for _remote in "${_remotes[@]}"; do
   _backedup_count+=${_remote_count}
 
 done
-log_notice "lxdbackup complete, $_backedup_count containers backed up out of $_container_count"
+log_info "lxdbackup complete, $_backedup_count containers backed up out of $_container_count"
 
 exit $(( _container_count - _backedup_count ))
