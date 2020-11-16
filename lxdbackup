@@ -25,6 +25,9 @@ cleanup () {
   : ;
 }
 
+# using echo instead of real commands for dryrun
+dryrun(){ _lxc="echo DRYRUN:${_lxc}"; }
+
 usage() {
   cat <<EOF >&2
 $0: <flags> 
@@ -54,11 +57,6 @@ if [[ $# != 0 ]] ; then
   exit 1
 fi
 
-# using echo instead of real commands for dryrun
-dryrun(){
-  _lxc="echo DRYRUN:${_lxc}"
-}
-
 # Copy container 
 copy_container() {
   local source="$1"
@@ -68,9 +66,7 @@ copy_container() {
 
   log_info "Attempting to copy '${source}'"
 
-  # Check if container exists on local.
-  # If it does then make an initial copy of the container from a snapshot
-  # This is because making a copy of a running container using criu doesn't work for some reason
+  # Check if container exists on local and delete if it does
   if [[ -n $(lxc list "^${container}\$" -c n --format=csv) ]] ; then
     log_debug "${container} exists on local:, delete before copy"
 
@@ -104,8 +100,8 @@ container_list() {
 }
 
 declare -i _remote_count
-declare -i _backedup_count
-declare -i _container_count
+declare -i _backedup_count=0
+declare -i _container_count=0
 declare -a _remotes
 
 # Get the first pool on the local lxd.
