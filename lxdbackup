@@ -68,7 +68,7 @@ delete_snapshot() {
   log_debug "delete_snapshot ${container} ${snapname}"
 
   # delete snapshot if it exists
-  if lxc info "${container}" | grep -q "^  ${snapname} "; then
+  if lxc info "${container}" | grep -q "^..${snapname} "; then
     log_info "Attempting to delete snapshot '${snap}'"
     if ! ${_lxc} delete "${snap}" ; then
       log_error "FAILED to delete snapshot ${snap}"
